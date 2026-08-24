@@ -1,0 +1,30 @@
+DIGI v0.3 UPDATE
+
+WHAT CHANGED
+- Brand renamed to Digi.
+- Root URL opens the album directly.
+- Apple-inspired minimal mobile-first album design.
+- Manager/bridesmaids links are tiny and discreet in album footer.
+- PIN-only login: bridesmaids 1234, manager 2503.
+- Bridesmaids Tinder-style swipe: right approve, left reject.
+- Bridesmaids now have a Published tab and can remove an approved photo from the public album (moves status to private, does not permanently delete the file).
+- Admin panel redesigned for mobile.
+- Admin QR/NFC section: event URL, QR preview, share/copy, NFC payload link.
+- New guest uploads are organized under events/{event_id}/pending/ in Supabase Storage; covers under events/{event_id}/covers/.
+
+IMPORTANT STORAGE NOTE
+Digi keeps the original image object immutable and uses the database status (pending/approved/private/rejected) to decide where it appears. We do NOT physically move the same image between public/private folders on every moderation action; this avoids duplicate files and broken URLs.
+
+INSTALL
+1. Be on branch digi-v0.3.
+2. Extract this ZIP over the repository root.
+3. Run: node run-v03.mjs
+4. Enter the CURRENT Supabase database password when asked.
+5. Refresh the dev site.
+
+TEST PINS
+Bridesmaids: 1234
+Manager: 2503
+
+QR NOTE
+The current v0.3 development QR preview uses QuickChart to render the QR from the public event URL. Before production, replace this with an in-app/server-side QR generator so there is no external QR rendering dependency.

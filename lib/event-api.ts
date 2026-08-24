@@ -88,7 +88,7 @@ export async function uploadGuestPhotos(eventId: string, files: File[]) {
   let uploaded = 0;
 
   for (const file of batch) {
-    const path = `${eventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+    const path = `events/${eventId}/pending/${crypto.randomUUID()}-${safeFileName(file.name)}`;
 
     const { error: uploadError } = await supabase.storage
       .from('event-photos')
@@ -117,7 +117,7 @@ export async function uploadGuestPhotos(eventId: string, files: File[]) {
 }
 
 export async function uploadEventCover(eventId: string, file: File) {
-  const path = `${eventId}/covers/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+  const path = `events/${eventId}/covers/${crypto.randomUUID()}-${safeFileName(file.name)}`;
 
   const { error } = await supabase.storage.from('event-assets').upload(path, file, {
     cacheControl: '3600',
@@ -129,14 +129,8 @@ export async function uploadEventCover(eventId: string, file: File) {
   return publicPhotoUrl(path, 'event-assets');
 }
 
-export async function staffLogin(
-  phone: string,
-  pin: string,
-  role: StaffRole,
-  eventId: string,
-) {
-  const { data, error } = await supabase.rpc('staff_login', {
-    p_phone: phone,
+export async function staffLogin(pin: string, role: StaffRole, eventId: string) {
+  const { data, error } = await supabase.rpc('staff_pin_login', {
     p_pin: pin,
     p_role: role,
     p_event_id: eventId,
@@ -144,7 +138,7 @@ export async function staffLogin(
 
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.token) throw new Error('פרטי הכניסה אינם נכונים.');
+  if (!row?.token) throw new Error('הקוד אינו נכון.');
 
   return row as StaffSession;
 }

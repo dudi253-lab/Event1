@@ -12,43 +12,35 @@ import {
 } from '@/lib/event-api';
 import { supabase } from '@/lib/supabase';
 
-type View = 'home' | 'upload' | 'success' | 'album';
-
 export default function GuestEventPage() {
   const [event, setEvent] = useState<EventRow | null>(null);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
-  const [view, setView] = useState<View>('home');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
-  const [uploadedCount, setUploadedCount] = useState(0);
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [lightbox, setLightbox] = useState<number | null>(null);
 
   const loadEvent = async () => {
-    try {
-      const nextEvent = await getEventBySlug();
-      setEvent(nextEvent);
-      setError('');
-      return nextEvent;
-    } catch {
-      setError('לא הצלחנו לטעון את האירוע.');
-      return null;
-    }
+    const next = await getEventBySlug();
+    setEvent(next);
+    return next;
   };
 
   const loadAlbum = async (eventId?: string) => {
     const id = eventId ?? event?.id;
     if (!id) return;
-    try {
-      setPhotos(await getApprovedPhotos(id));
-    } catch {
-      setError('לא הצלחנו לטעון את האלבום.');
-    }
+    setPhotos(await getApprovedPhotos(id));
   };
 
   useEffect(() => {
     void (async () => {
-      const loaded = await loadEvent();
-      if (loaded) await loadAlbum(loaded.id);
+      try {
+        const loaded = await loadEvent();
+        await loadAlbum(loaded.id);
+      } catch {
+        setError('לא הצלחנו לטעון את האלבום.');
+      }
     })();
   }, []);
 
@@ -56,7 +48,7 @@ export default function GuestEventPage() {
     if (!event?.id) return;
 
     const eventChannel = supabase
-      .channel(`guest-event-${event.id}`)
+      .channel(`digi-event-${event.id}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${event.id}` },
@@ -65,7 +57,7 @@ export default function GuestEventPage() {
       .subscribe();
 
     const photoChannel = supabase
-      .channel(`guest-photos-${event.id}`)
+      .channel(`digi-photos-${event.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'photos', filter: `event_id=eq.${event.id}` },
@@ -83,8 +75,9 @@ export default function GuestEventPage() {
     const selected = Array.from(e.target.files ?? []).slice(0, 20);
     if (!selected.length) return;
     setFiles(selected);
-    setView('upload');
+    setMessage('');
     setError('');
+    e.target.value = '';
   };
 
   const upload = async () => {
@@ -93,9 +86,9 @@ export default function GuestEventPage() {
     setError('');
     try {
       const count = await uploadGuestPhotos(event.id, files);
-      setUploadedCount(count);
       setFiles([]);
-      setView('success');
+      setMessage(`${count} תמונות עלו בהצלחה וממתינות לאישור ✨`);
+      window.setTimeout(() => setMessage(''), 4500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ההעלאה נכשלה. נסו שוב.');
     } finally {
@@ -103,127 +96,118 @@ export default function GuestEventPage() {
     }
   };
 
-  if (view === 'album') {
-    return (
-      <main className="albumPage">
-        <header className="albumTopbar">
-          <button className="roundIcon" onClick={() => setView('home')}>→</button>
+  const dateLabel = event?.event_date
+    ? new Date(`${event.event_date}T00:00:00`).toLocaleDateString('he-IL', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : '';
+
+  return (
+    <main className="digiAlbumPage">
+      <section
+        className="digiHero"
+        style={
+          event?.cover_image
+            ? { backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.68)), url("${event.cover_image}")` }
+            : undefined
+        }
+      >
+        <div className="digiHeroTop">
+          <span className="digiWordmark">Digi</span>
+          <span className="heroEventType">{event?.event_type || 'אירוע'}</span>
+        </div>
+
+        <div className="digiHeroContent">
+          {dateLabel && <span className="heroDate">{dateLabel}</span>}
+          <h1>{event?.name || 'האירוע שלכם'}</h1>
+          <p>האירוע שלכם, דרך העיניים של כולם.</p>
+          <label className="albumUploadCta">
+            <span>＋</span> שתפו רגע
+            <input type="file" accept="image/*" multiple onChange={onFiles} />
+          </label>
+          <small>ללא הרשמה · עד 20 תמונות בכל העלאה</small>
+        </div>
+      </section>
+
+      <section className="albumBody">
+        <header className="albumSectionHeader">
           <div>
-            <strong>{event?.name || 'האלבום'}</strong>
-            <span>{photos.length} תמונות מאושרות</span>
+            <span>האלבום המשותף</span>
+            <h2>הרגעים שלנו</h2>
           </div>
-          <Link className="roundIcon" href="/">⌂</Link>
+          <b>{photos.length}</b>
         </header>
 
-        <section
-          className="albumCover"
-          style={
-            event?.cover_image
-              ? { backgroundImage: `linear-gradient(180deg, rgba(10,8,15,.12), rgba(10,8,15,.78)), url("${event.cover_image}")` }
-              : undefined
-          }
-        >
-          <span>{event?.event_type || 'אירוע'}</span>
-          <h1>{event?.name || 'Moments'}</h1>
-        </section>
-
-        <section className="albumIntro">
-          <span>האלבום המשותף</span>
-          <h1>הרגעים שלכם</h1>
-          <p>רק תמונות שאושרו על ידי השושבינות מופיעות כאן.</p>
-        </section>
+        {error && <div className="inlineError">{error}</div>}
 
         {photos.length ? (
-          <div className="photoGrid">
-            {photos.map((photo) => (
-              <a
-                key={photo.id}
-                href={publicPhotoUrl(photo.storage_path)}
-                target="_blank"
-                rel="noreferrer"
-                className="photoTile"
-              >
-                <img src={publicPhotoUrl(photo.storage_path)} alt={photo.original_filename || 'תמונת אירוע'} />
-              </a>
+          <div className="digiPhotoGrid">
+            {photos.map((photo, index) => (
+              <button className="digiPhotoTile" key={photo.id} onClick={() => setLightbox(index)}>
+                <img loading="lazy" src={publicPhotoUrl(photo.storage_path)} alt={photo.original_filename || 'תמונת אירוע'} />
+              </button>
             ))}
           </div>
         ) : (
-          <div className="emptyAlbum">
-            <b>האלבום עוד מחכה לרגע הראשון ✨</b>
-            <span>תמונות שאושרו יופיעו כאן אוטומטית.</span>
+          <div className="albumEmpty">
+            <span>✦</span>
+            <h3>הרגע הראשון עוד בדרך</h3>
+            <p>תמונות שאושרו יופיעו כאן אוטומטית.</p>
           </div>
         )}
-
-        <label className="floatingUpload">
-          ＋ העלאת תמונות
-          <input type="file" accept="image/*" multiple onChange={onFiles} />
-        </label>
-      </main>
-    );
-  }
-
-  if (view === 'success') {
-    return (
-      <main className="guestSimplePage">
-        <div className="successOrb">✓</div>
-        <span className="sectionEyebrow">העלאה הושלמה</span>
-        <h1>קיבלנו! ❤️</h1>
-        <p>{uploadedCount} תמונות נשמרו וממתינות לאישור.</p>
-        <button className="primaryButton" onClick={() => setView('home')}>📸 להעלות עוד</button>
-        <button className="secondaryButton" onClick={() => setView('album')}>לצפייה באלבום</button>
-      </main>
-    );
-  }
-
-  if (view === 'upload') {
-    return (
-      <main className="guestSimplePage">
-        <button className="screenBack" onClick={() => setView('home')}>→</button>
-        <span className="sectionEyebrow">{files.length} תמונות נבחרו</span>
-        <h1>מוכנים לשתף?</h1>
-        <p>התמונות יישמרו מיד ויעברו לתור האישור של השושבינות.</p>
-        <div className="selectedFiles">
-          {files.slice(0, 8).map((file, index) => (
-            <span key={`${file.name}-${index}`}>{file.name}</span>
-          ))}
-        </div>
-        {error && <div className="formError">{error}</div>}
-        <button className="primaryButton" onClick={upload} disabled={busy}>
-          {busy ? 'מעלה…' : `העלאת ${files.length} תמונות`}
-        </button>
-        <button className="secondaryButton" onClick={() => setView('home')} disabled={busy}>ביטול</button>
-      </main>
-    );
-  }
-
-  return (
-    <main
-      className="guestHero"
-      style={
-        event?.cover_image
-          ? { backgroundImage: `linear-gradient(180deg, rgba(10,8,15,.18), rgba(10,8,15,.84)), url("${event.cover_image}")` }
-          : undefined
-      }
-    >
-      <Link href="/" className="guestHomeLink">⌂</Link>
-      <section className="guestHeroContent">
-        <span className="eventPill">{event?.event_type || 'אירוע'}</span>
-        <h1>{event?.name || 'Moments'}</h1>
-        {event?.event_date && <div className="eventDate">{event.event_date}</div>}
-        <p>תודה שאתם כאן ❤️<br />שתפו את הרגעים שראיתם מהצד שלכם.</p>
-
-        <label className="primaryButton fileButton">
-          📷 העלאת תמונות
-          <input type="file" accept="image/*" multiple onChange={onFiles} />
-        </label>
-
-        <button className="secondaryButton glassButton" onClick={() => setView('album')}>
-          ▧ פתיחת האלבום
-        </button>
-
-        {error && <small className="guestError">{error}</small>}
-        <small>ללא הרשמה · עד 20 תמונות בכל העלאה</small>
       </section>
+
+      <footer className="digiFooter">
+        <span>Digi</span>
+        <div className="stealthOps">
+          <Link href="/moderator">שושבינות</Link>
+          <span>·</span>
+          <Link href="/admin">ניהול</Link>
+        </div>
+      </footer>
+
+      <label className="floatingDigiUpload">
+        ＋ העלאת תמונות
+        <input type="file" accept="image/*" multiple onChange={onFiles} />
+      </label>
+
+      {files.length > 0 && (
+        <div className="uploadSheetBackdrop" onClick={() => !busy && setFiles([])}>
+          <section className="uploadSheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheetHandle" />
+            <span className="sheetEyebrow">{files.length} תמונות נבחרו</span>
+            <h2>מעלים ל־Digi?</h2>
+            <p>התמונות יעברו לשושבינות לאישור לפני שהן מופיעות באלבום.</p>
+            <div className="fileChips">
+              {files.slice(0, 5).map((file, index) => (
+                <span key={`${file.name}-${index}`}>{file.name}</span>
+              ))}
+              {files.length > 5 && <span>+{files.length - 5} נוספות</span>}
+            </div>
+            {error && <div className="inlineError">{error}</div>}
+            <button className="primaryButton" onClick={() => void upload()} disabled={busy}>
+              {busy ? 'מעלה…' : `העלאת ${files.length} תמונות`}
+            </button>
+            <button className="textButton" onClick={() => setFiles([])} disabled={busy}>ביטול</button>
+          </section>
+        </div>
+      )}
+
+      {message && <div className="successToast">✓ {message}</div>}
+
+      {lightbox !== null && photos[lightbox] && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <button className="lightboxClose" onClick={() => setLightbox(null)}>×</button>
+          <img src={publicPhotoUrl(photos[lightbox].storage_path)} alt="תמונה מוגדלת" onClick={(e) => e.stopPropagation()} />
+          <div className="lightboxNav" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setLightbox((current) => current === null ? 0 : (current - 1 + photos.length) % photos.length)}>→</button>
+            <span>{lightbox + 1} / {photos.length}</span>
+            <button onClick={() => setLightbox((current) => current === null ? 0 : (current + 1) % photos.length)}>←</button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

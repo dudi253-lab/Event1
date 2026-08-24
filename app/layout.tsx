@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Moments — Event Photo Platform',
-  description: 'Shared event photo platform — guest uploads, moderation and company back office.',
+  title: 'Digi — האירוע שלכם, דרך העיניים של כולם',
+  description: 'אלבום אירוע משותף עם העלאה מהירה, אישור תמונות ו־QR/NFC.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

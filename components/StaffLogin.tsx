@@ -13,26 +13,26 @@ export function StaffLogin({
   title: string;
   subtitle: string;
   roleLabel: string;
-  onSubmit: (phone: string, pin: string) => Promise<void>;
+  onSubmit: (pin: string) => Promise<void>;
 }) {
-  const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!phone.trim() || pin.length < 4) {
-      setError('יש להזין מספר טלפון וקוד אישי.');
+    if (pin.length !== 4) {
+      setError('יש להזין קוד בן 4 ספרות.');
       return;
     }
 
     setBusy(true);
     setError('');
     try {
-      await onSubmit(phone, pin);
+      await onSubmit(pin);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'לא הצלחנו להתחבר.');
+      setError(err instanceof Error ? err.message : 'הקוד אינו נכון.');
+      setPin('');
     } finally {
       setBusy(false);
     }
@@ -45,37 +45,34 @@ export function StaffLogin({
         <span className="loginRole">{roleLabel}</span>
         <h1>{title}</h1>
         <p>{subtitle}</p>
+
         <form onSubmit={submit}>
-          <label>
-            מספר טלפון
+          <label className="pinLabel">
+            קוד כניסה
             <input
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="05X-XXXXXXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-          <label>
-            קוד אישי
-            <input
+              className="pinInput"
               inputMode="numeric"
               autoComplete="one-time-code"
               type="password"
               placeholder="••••"
+              maxLength={4}
+              autoFocus
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
             />
           </label>
+          <div className="pinDots" aria-hidden="true">
+            {[0, 1, 2, 3].map((index) => (
+              <span key={index} className={pin.length > index ? 'filled' : ''} />
+            ))}
+          </div>
           {error && <div className="loginError">{error}</div>}
-          <button className="primaryButton" type="submit" disabled={busy}>
-            {busy ? 'מתחבר…' : 'כניסה למערכת'}
+          <button className="primaryButton" type="submit" disabled={busy || pin.length !== 4}>
+            {busy ? 'בודק…' : 'כניסה'}
           </button>
         </form>
-        <div className="demoHint">
-          v0.2 · הכניסה נבדקת מול Supabase. חשבונות הבדיקה מוגדרים בבסיס הנתונים.
-        </div>
-        <Link className="loginBack" href="/">← חזרה לעמוד הראשי</Link>
+
+        <Link className="loginBack" href="/e/demo-event">חזרה לאלבום</Link>
       </section>
     </main>
   );
