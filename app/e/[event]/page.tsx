@@ -1,92 +1,228 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { demoEvent, gallery } from '@/lib/mock-data';
+import { ChangeEvent, useEffect, useState } from 'react';
+import {
+  EventRow,
+  getApprovedPhotos,
+  getEventBySlug,
+  PhotoRow,
+  publicPhotoUrl,
+  uploadGuestPhotos,
+} from '@/lib/event-api';
+import { supabase } from '@/lib/supabase';
+
+type View = 'home' | 'upload' | 'success' | 'album';
 
 export default function GuestEventPage() {
-  const [view, setView] = useState<'home' | 'upload' | 'success' | 'album'>('home');
-  const [selected, setSelected] = useState(0);
-  const title = useMemo(() => demoEvent.name, []);
+  const [event, setEvent] = useState<EventRow | null>(null);
+  const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [view, setView] = useState<View>('home');
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [error, setError] = useState('');
 
-  const onFiles = (files: FileList | null) => {
-    setSelected(files?.length ?? 0);
-    if (files?.length) setView('upload');
+  const loadEvent = async () => {
+    try {
+      const nextEvent = await getEventBySlug();
+      setEvent(nextEvent);
+      setError('');
+      return nextEvent;
+    } catch {
+      setError('לא הצלחנו לטעון את האירוע.');
+      return null;
+    }
+  };
+
+  const loadAlbum = async (eventId?: string) => {
+    const id = eventId ?? event?.id;
+    if (!id) return;
+    try {
+      setPhotos(await getApprovedPhotos(id));
+    } catch {
+      setError('לא הצלחנו לטעון את האלבום.');
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      const loaded = await loadEvent();
+      if (loaded) await loadAlbum(loaded.id);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!event?.id) return;
+
+    const eventChannel = supabase
+      .channel(`guest-event-${event.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${event.id}` },
+        () => void loadEvent(),
+      )
+      .subscribe();
+
+    const photoChannel = supabase
+      .channel(`guest-photos-${event.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'photos', filter: `event_id=eq.${event.id}` },
+        () => void loadAlbum(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(eventChannel);
+      void supabase.removeChannel(photoChannel);
+    };
+  }, [event?.id]);
+
+  const onFiles = (e: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []).slice(0, 20);
+    if (!selected.length) return;
+    setFiles(selected);
+    setView('upload');
+    setError('');
+  };
+
+  const upload = async () => {
+    if (!event || !files.length) return;
+    setBusy(true);
+    setError('');
+    try {
+      const count = await uploadGuestPhotos(event.id, files);
+      setUploadedCount(count);
+      setFiles([]);
+      setView('success');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ההעלאה נכשלה. נסו שוב.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (view === 'album') {
     return (
-      <main className="guestShell guestAlbum">
-        <header className="guestTopbar">
-          <button className="iconButton" onClick={() => setView('home')} aria-label="חזרה">→</button>
-          <div><strong>{title}</strong><span>האלבום המשותף</span></div>
-          <Link className="iconButton" href="/" aria-label="בחירת ממשק">⌂</Link>
+      <main className="albumPage">
+        <header className="albumTopbar">
+          <button className="roundIcon" onClick={() => setView('home')}>→</button>
+          <div>
+            <strong>{event?.name || 'האלבום'}</strong>
+            <span>{photos.length} תמונות מאושרות</span>
+          </div>
+          <Link className="roundIcon" href="/">⌂</Link>
         </header>
-        <div className="albumIntro">
-          <span className="softBadge">✓ 142 תמונות מאושרות</span>
-          <h1>הערב דרך העיניים שלכם</h1>
-          <p>רק תמונות שאושרו מופיעות כאן.</p>
-        </div>
-        <div className="masonryGrid">
-          {gallery.map((src, i) => <img key={src} src={src} alt={`תמונת אירוע ${i + 1}`} />)}
-        </div>
-        <button className="stickyUpload" onClick={() => setView('home')}>＋ העלו עוד תמונות</button>
+
+        <section
+          className="albumCover"
+          style={
+            event?.cover_image
+              ? { backgroundImage: `linear-gradient(180deg, rgba(10,8,15,.12), rgba(10,8,15,.78)), url("${event.cover_image}")` }
+              : undefined
+          }
+        >
+          <span>{event?.event_type || 'אירוע'}</span>
+          <h1>{event?.name || 'Moments'}</h1>
+        </section>
+
+        <section className="albumIntro">
+          <span>האלבום המשותף</span>
+          <h1>הרגעים שלכם</h1>
+          <p>רק תמונות שאושרו על ידי השושבינות מופיעות כאן.</p>
+        </section>
+
+        {photos.length ? (
+          <div className="photoGrid">
+            {photos.map((photo) => (
+              <a
+                key={photo.id}
+                href={publicPhotoUrl(photo.storage_path)}
+                target="_blank"
+                rel="noreferrer"
+                className="photoTile"
+              >
+                <img src={publicPhotoUrl(photo.storage_path)} alt={photo.original_filename || 'תמונת אירוע'} />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyAlbum">
+            <b>האלבום עוד מחכה לרגע הראשון ✨</b>
+            <span>תמונות שאושרו יופיעו כאן אוטומטית.</span>
+          </div>
+        )}
+
+        <label className="floatingUpload">
+          ＋ העלאת תמונות
+          <input type="file" accept="image/*" multiple onChange={onFiles} />
+        </label>
       </main>
     );
   }
 
   if (view === 'success') {
     return (
-      <main className="guestShell centeredGuest">
+      <main className="guestSimplePage">
         <div className="successOrb">✓</div>
-        <span className="eyebrow">העלאה הושלמה</span>
+        <span className="sectionEyebrow">העלאה הושלמה</span>
         <h1>קיבלנו! ❤️</h1>
-        <p>{selected || 6} התמונות שלכם נשמרו וממתינות לאישור לפני שיופיעו באלבום.</p>
-        <button className="primaryButton" onClick={() => { setSelected(0); setView('home'); }}>📸 להעלות עוד</button>
-        <button className="secondaryButton" onClick={() => setView('album')}>✨ לראות את האלבום</button>
+        <p>{uploadedCount} תמונות נשמרו וממתינות לאישור.</p>
+        <button className="primaryButton" onClick={() => setView('home')}>📸 להעלות עוד</button>
+        <button className="secondaryButton" onClick={() => setView('album')}>לצפייה באלבום</button>
       </main>
     );
   }
 
   if (view === 'upload') {
     return (
-      <main className="guestShell uploadScreen">
-        <header className="guestTopbar">
-          <button className="iconButton" onClick={() => setView('home')}>→</button>
-          <strong>העלאת תמונות</strong>
-          <span />
-        </header>
-        <section className="uploadBody">
-          <span className="eyebrow">בחרתם {selected} תמונות</span>
-          <h1>הכול מוכן להעלאה</h1>
-          <p>בגרסת Starter זו הדמיה. בשלב Supabase הקבצים יישמרו באמת ב־Storage.</p>
-          <div className="previewStrip">
-            {gallery.slice(0, Math.min(Math.max(selected, 3), 6)).map((src) => <img key={src} src={src} alt="תצוגה מקדימה" />)}
-          </div>
-          <div className="uploadInfo"><span>JPG / PNG / HEIC</span><span>עד 20 תמונות בהעלאה</span></div>
-          <button className="primaryButton" onClick={() => setView('success')}>העלו {selected} תמונות ❤️</button>
-          <button className="secondaryButton" onClick={() => setView('home')}>ביטול</button>
-        </section>
+      <main className="guestSimplePage">
+        <button className="screenBack" onClick={() => setView('home')}>→</button>
+        <span className="sectionEyebrow">{files.length} תמונות נבחרו</span>
+        <h1>מוכנים לשתף?</h1>
+        <p>התמונות יישמרו מיד ויעברו לתור האישור של השושבינות.</p>
+        <div className="selectedFiles">
+          {files.slice(0, 8).map((file, index) => (
+            <span key={`${file.name}-${index}`}>{file.name}</span>
+          ))}
+        </div>
+        {error && <div className="formError">{error}</div>}
+        <button className="primaryButton" onClick={upload} disabled={busy}>
+          {busy ? 'מעלה…' : `העלאת ${files.length} תמונות`}
+        </button>
+        <button className="secondaryButton" onClick={() => setView('home')} disabled={busy}>ביטול</button>
       </main>
     );
   }
 
   return (
-    <main className="guestHero" style={{ '--event-accent': demoEvent.primaryColor } as React.CSSProperties}>
-      <img className="guestHeroImage" src={demoEvent.coverImage} alt="תמונת קאבר של האירוע" />
-      <div className="guestOverlay" />
+    <main
+      className="guestHero"
+      style={
+        event?.cover_image
+          ? { backgroundImage: `linear-gradient(180deg, rgba(10,8,15,.18), rgba(10,8,15,.84)), url("${event.cover_image}")` }
+          : undefined
+      }
+    >
       <Link href="/" className="guestHomeLink">⌂</Link>
-      <section className="guestContent">
-        <span className="eventPill">QR / NFC</span>
-        <h1>{demoEvent.name}</h1>
-        <div className="eventDate">{demoEvent.date}</div>
-        <p>תודה שאתם כאן ❤️<br />שתפו אותנו ברגעים היפים שלכם.</p>
+      <section className="guestHeroContent">
+        <span className="eventPill">{event?.event_type || 'אירוע'}</span>
+        <h1>{event?.name || 'Moments'}</h1>
+        {event?.event_date && <div className="eventDate">{event.event_date}</div>}
+        <p>תודה שאתם כאן ❤️<br />שתפו את הרגעים שראיתם מהצד שלכם.</p>
+
         <label className="primaryButton fileButton">
           📷 העלאת תמונות
-          <input type="file" accept="image/*" multiple onChange={(e) => onFiles(e.target.files)} />
+          <input type="file" accept="image/*" multiple onChange={onFiles} />
         </label>
-        <button className="secondaryButton glassButton" onClick={() => setView('album')}>▧ צפייה באלבום</button>
-        <small>העלאה קלה ומהירה · ללא הרשמה</small>
+
+        <button className="secondaryButton glassButton" onClick={() => setView('album')}>
+          ▧ פתיחת האלבום
+        </button>
+
+        {error && <small className="guestError">{error}</small>}
+        <small>ללא הרשמה · עד 20 תמונות בכל העלאה</small>
       </section>
     </main>
   );

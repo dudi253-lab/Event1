@@ -1,0 +1,33 @@
+MOMENTS v0.2 UPDATE
+
+What changes:
+- New first page: big event cover + "כניסה לאלבום"
+- Operations area: פאנל מנהלים + שושבינות
+- Album uses real Supabase event data and approved photos
+- Guest upload saves real files to Supabase Storage and creates pending photo rows
+- Bridesmaids screen uses real pending queue and moderation RPCs
+- Admin can change event name/type and upload a cover file
+- Event updates sync through Supabase Realtime
+
+After extracting this ZIP:
+1. Run supabase/v0.2.sql once in Supabase SQL Editor.
+2. Restart the Next.js dev server.
+
+Test users created by the SQL:
+Admin:
+  phone: 0500000000
+  PIN: 1234
+
+Bridesmaid:
+  phone: 0500000001
+  PIN: 1234
+
+These are DEVELOPMENT TEST CREDENTIALS ONLY.
+Change them before any real event or public deployment.
+
+Security note:
+v0.2 keeps database mutations behind short-lived staff session tokens and RPC checks.
+For this development milestone the Storage buckets are public so approved images can be viewed
+without a server-side service key. Object filenames are random, and the public album only lists
+database rows with status=approved. Before production, move pending/private originals behind
+private signed URLs or a server route using a secret server-side key.
