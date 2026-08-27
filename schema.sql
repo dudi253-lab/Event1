@@ -24,6 +24,12 @@ create table if not exists public.events (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   check (ends_at is null or starts_at is null or ends_at > starts_at)
 );
+alter table public.events add column if not exists event_type text;
+alter table public.events add column if not exists location text;
+alter table public.events add column if not exists primary_color text not null default '#171714';
+alter table public.events add column if not exists secondary_color text not null default '#f4efe7';
+alter table public.events add column if not exists timezone text not null default 'Asia/Jerusalem';
+alter table public.events add column if not exists max_photos_per_upload integer not null default 20;
 create table if not exists public.event_credentials (
   event_id uuid primary key references public.events(id) on delete cascade,
   pin_salt text not null, pin_hash text not null, updated_at timestamptz not null default now()

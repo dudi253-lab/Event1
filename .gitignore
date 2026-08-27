@@ -6,3 +6,5 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 .vercel
+AGENTS.md
+CLAUDE.md

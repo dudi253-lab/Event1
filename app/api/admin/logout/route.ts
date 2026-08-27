@@ -1,0 +1,2 @@
+import {cookies} from 'next/headers';import {SESSION_COOKIE,sha256} from '@/lib/security';import {serverClient} from '@/lib/supabase-server';
+export async function POST(){const jar=await cookies(),token=jar.get(SESSION_COOKIE)?.value;if(token)await serverClient().from('staff_sessions').update({revoked_at:new Date().toISOString()}).eq('token_hash',sha256(token));jar.delete(SESSION_COOKIE);return Response.json({ok:true})}
